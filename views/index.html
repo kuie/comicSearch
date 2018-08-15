@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>漫画</title>
+    <link href="https://cdn.bootcss.com/iview/2.14.0/styles/iview.css" rel="stylesheet">
+    <script src="https://cdn.bootcss.com/vue/2.5.17-beta.0/vue.js"></script>
+    <script src="https://cdn.bootcss.com/iview/2.14.0/iview.js"></script>
+    <script src="https://cdn.bootcss.com/axios/0.18.0/axios.js"></script>
+    <style>
+        .vertical-center-modal {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .vertical-center-modal .ivu-modal {
+            top: 0;
+        }
+
+        .cardBox img {
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+    <i-input v-model="keyword"></i-input>
+    <i-button type="primary" icon="ios-search" @click="search">Search</i-button>
+    <div v-if="pageList.length">
+        <Card v-for="(obj,index) in pageList" :key="index" style="width:16%; margin: 2%;float: left">
+            <div class="cardBox" @click="showParagraph(obj)">
+                <img :src="domain+obj.logo" :alt="obj.name">
+                <h4>{{obj.name}}</h4>
+                <h6>{{obj.label.length?obj.label.join(' / '):'无标签'}}</h6>
+            </div>
+        </Card>
+    </div>
+    <!--<Page :total="total" size="small"/>-->
+    <Modal width="100"
+           v-model="imageBox"
+           :closable="false"
+           :mask-closable="false"
+           class-name="vertical-center-modal">
+        <p slot="header" style="color:#f60;text-align:center">{{image.title}}</p>
+        <Card style="width: 96%;margin: 2%">
+            <img :src="image.src">
+        </Card>
+        <div slot="footer"></div>
+    </Modal>
+    <Modal width="100"
+           v-model="paragraphBox"
+           :closable="false"
+           :mask-closable="false"
+           class-name="vertical-center-modal">
+        <p slot="header" style="color:#f60;text-align:center">{{paragraph.title}}</p>
+        <Card style="width: 96%;margin: 2%"></Card>
+        <span v-for="(item,index) in paragraph.pages">
+            <i-button type="text" @click="showImage(item,index)">第{{item.label}}集/卷({{item.max}}页)</i-button>
+        </span>
+        <div slot="footer"></div>
+    </Modal>
+</div>
+
+<script type="module">
+    // 定义DB
+    const worker1 = new Worker('/javascripts/DB/taskObject.js');
+
+    new Vue({
+        el: '#app',
+        data() {
+            return {
+                domain: 'http://www.cartoonmad.com',
+                keyword: '',
+                list: [],
+                page: 1, size: 20,
+                pageList: [],
+                // total: 0,
+                imageBox: false,
+                paragraphBox: false,
+                image: {
+                    title: '图片',
+                    src: '',
+                    max: 0,
+                    next: {},
+                    prev: {}
+                },
+                paragraph: {
+                    obj: {},
+                    title: '',
+                    pages: []
+                }
+            }
+        },
+        created() {
+            worker1.onmessage = res => {
+                /*worker1响应拦截器*/
+                const workCB = new Promise((resolve, reject) => {
+                    if (res.data.code === 200) {
+                        resolve(res.data);
+                    } else {
+                        reject(res.msg);
+                    }
+                });
+                workCB.then(data => {
+                    switch (data.type) {
+                        case 'update':
+                            this.getPageList(1, 20);
+                            break;
+                        case 'search':
+                            this.pageList = data.list;
+                            break;
+                        case 'pageList':
+                            this.pageList = data.list;
+                            break;
+                        case 'delAll':
+
+                            break;
+                    }
+                }).catch(e => console.log(e)).finally();
+            };
+            this.getPageList(1, 20);
+            // this.getAllData();
+        },
+        methods: {
+            getPageList(page, size) {
+                worker1.postMessage(['comic', 'pageList', page, size]);
+            },
+            getAllData() {
+                axios.get('/json/comicList.json').then(res => worker1.postMessage(['comic', 'update', res.data.list])).catch(e => console.log(e));
+            },
+            clearData() {
+                worker1.postMessage(['comic', 'delAll']);
+            },
+            search() {
+                if (!this.keyword) return false;
+                worker1.postMessage(['comic', 'search', this.keyword]);
+            },
+            showParagraph(item) {
+                this.paragraph.obj = item;
+                this.paragraph.title = item.name;
+                this.paragraph.pages = item.pages;
+                this.paragraphBox = true;
+            },
+            showImage(page, index) {
+                index += 1;
+                index = index > 99 ? index : index > 9 ? `0${index}` : `00${index}`;
+                const item = this.paragraph.obj;
+                this.image.src = `http://${item.domain}/${item.hash}/${item.index}/${index}/001.jpg`;
+                this.image.max = page.max;
+                this.paragraphBox = false;
+                this.$nextTick(() => {
+                    this.imageBox = true;
+                });
+            }
+        }
+    });
+    Vue.use(iview);
+</script>
+</body>
+</html>
